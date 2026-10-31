@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getDashboardPath } from '../../utils/roleRoutes';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -12,7 +13,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     setError('');
 
     if (!email || !password) {
@@ -22,8 +23,8 @@ export default function Login() {
 
     try {
       setLoading(true);
-      await login(email, password);
-      navigate('/dashboard');
+      const user = await login(email, password);
+      navigate(getDashboardPath(user.role));
     } catch (err) {
       setError(err?.data?.message || err.message || 'Login failed. Please verify your credentials.');
     } finally {
@@ -31,10 +32,33 @@ export default function Login() {
     }
   };
 
-  const fillDemoAdmin = () => {
-    setEmail('admin@example.com');
-    setPassword('admin123');
+  const handleQuickLogin = async (acc) => {
+    setEmail(acc.email);
+    setPassword(acc.pass);
+    setError('');
+    try {
+      setLoading(true);
+      const user = await login(acc.email, acc.pass);
+      navigate(getDashboardPath(user.role));
+    } catch (err) {
+      setError(err?.data?.message || err.message || 'Quick login failed');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const demoAccounts = [
+    { label: 'Super Admin', email: 'superadmin@example.com', pass: 'admin123', color: '#7e22ce' },
+    { label: 'School Admin', email: 'admin@example.com', pass: 'admin123', color: '#2563eb' },
+    { label: 'Principal', email: 'principal@example.com', pass: 'principal123', color: '#db2777' },
+    { label: 'Teacher', email: 'teacher@example.com', pass: 'teacher123', color: '#059669' },
+    { label: 'Accountant', email: 'accountant@example.com', pass: 'account123', color: '#16a34a' },
+    { label: 'Receptionist', email: 'receptionist@example.com', pass: 'recept123', color: '#d97706' },
+    { label: 'Librarian', email: 'librarian@example.com', pass: 'library123', color: '#0284c7' },
+    { label: 'Transport Mgr', email: 'transport@example.com', pass: 'transport123', color: '#ea580c' },
+    { label: 'Parent', email: 'parent@example.com', pass: 'parent123', color: '#4f46e5' },
+    { label: 'Student', email: 'student@example.com', pass: 'student123', color: '#0d9488' },
+  ];
 
   return (
     <div style={styles.page}>
@@ -46,8 +70,8 @@ export default function Login() {
               <path d="M6 12v5c3 3 9 3 12 0v-5" />
             </svg>
           </div>
-          <h2 style={styles.title}>EduPulse Portal</h2>
-          <p style={styles.subtitle}>Sign in with your Administrator credentials</p>
+          <h2 style={styles.title}>EduPulse ERP Portal</h2>
+          <p style={styles.subtitle}>Unified Role-Based Authentication Gateway</p>
         </div>
 
         {error && (
@@ -68,7 +92,7 @@ export default function Login() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@example.com"
+              placeholder="user@example.com"
               className="form-control"
               autoComplete="username"
               required
@@ -92,20 +116,39 @@ export default function Login() {
             type="submit"
             disabled={loading}
             className="btn btn-primary"
-            style={{ width: '100%', padding: '12px', fontSize: '15px' }}
+            style={{ width: '100%', padding: '12px', fontSize: '15px', fontWeight: '700' }}
           >
-            {loading ? 'Authenticating...' : 'Sign In to Dashboard'}
+            {loading ? 'Authenticating...' : 'Sign In to Portal'}
           </button>
         </form>
 
-        <div style={styles.demoBox} onClick={fillDemoAdmin} title="Click to auto-fill">
-          <span style={styles.demoTag}>Quick Demo Login</span>
-          <p style={styles.demoText}>Click to fill: <strong>admin@example.com</strong> / <strong>admin123</strong></p>
+        {/* 10 Roles Quick Demo Switcher */}
+        <div style={styles.demoSection}>
+          <div style={styles.demoHeading}>Instant 1-Click Role Direct Logins:</div>
+          <div style={styles.rolesGrid}>
+            {demoAccounts.map((acc) => (
+              <button
+                key={acc.email}
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickLogin(acc)}
+                style={{
+                  ...styles.roleChip,
+                  borderColor: email === acc.email ? acc.color : '#cbd5e1',
+                  backgroundColor: email === acc.email ? '#f1f5f9' : '#ffffff'
+                }}
+                title={`Click to login directly as ${acc.label}`}
+              >
+                <span style={{ ...styles.chipDot, backgroundColor: acc.color }} />
+                <span>{acc.label}</span>
+              </button>
+            ))}
+          </div>
+          <p style={styles.demoHelp}>Click any role above to instantly authenticate into its dedicated panel.</p>
         </div>
 
         <div style={styles.footer}>
-          <span>Need a new administrator account? </span>
-          <Link to="/register" style={styles.link}>Register Here</Link>
+          <span>Delhi Public Global Academy • ERP Cloud v2.5</span>
         </div>
       </div>
     </div>
@@ -119,19 +162,19 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#0f172a',
-    padding: '20px'
+    padding: '24px'
   },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: '16px',
-    padding: '36px',
-    maxWidth: '440px',
+    padding: '32px',
+    maxWidth: '520px',
     width: '100%',
     boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)'
   },
   header: {
     textAlign: 'center',
-    marginBottom: '28px'
+    marginBottom: '24px'
   },
   brandIcon: {
     width: '48px',
@@ -141,7 +184,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: '0 auto 14px auto',
+    margin: '0 auto 12px auto',
     boxShadow: '0 8px 16px rgba(37, 99, 235, 0.3)'
   },
   title: {
@@ -153,7 +196,7 @@ const styles = {
   subtitle: {
     fontSize: '13px',
     color: '#64748b',
-    marginTop: '6px'
+    marginTop: '4px'
   },
   errorBox: {
     display: 'flex',
@@ -165,46 +208,64 @@ const styles = {
     borderRadius: '8px',
     color: '#b91c1c',
     fontSize: '13px',
-    marginBottom: '20px'
+    marginBottom: '18px'
   },
   form: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px'
+    gap: '12px'
   },
-  demoBox: {
-    marginTop: '20px',
-    padding: '12px',
+  demoSection: {
+    marginTop: '22px',
+    padding: '14px',
     backgroundColor: '#f8fafc',
-    border: '1px dashed #cbd5e1',
-    borderRadius: '8px',
-    textAlign: 'center',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease'
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px'
   },
-  demoTag: {
-    display: 'inline-block',
+  demoHeading: {
     fontSize: '11px',
     fontWeight: '700',
-    color: '#2563eb',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px'
-  },
-  demoText: {
-    fontSize: '12px',
     color: '#475569',
-    marginTop: '4px',
-    margin: 0
+    textTransform: 'uppercase',
+    letterSpacing: '0.6px',
+    marginBottom: '10px'
+  },
+  rolesGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+    gap: '6px'
+  },
+  roleChip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '7px 10px',
+    borderRadius: '6px',
+    border: '1px solid #cbd5e1',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#334155',
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'all 0.15s ease'
+  },
+  chipDot: {
+    width: '7px',
+    height: '7px',
+    borderRadius: '50%',
+    flexShrink: 0
+  },
+  demoHelp: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    marginTop: '8px',
+    marginBottom: 0,
+    textAlign: 'center'
   },
   footer: {
-    marginTop: '24px',
+    marginTop: '20px',
     textAlign: 'center',
-    fontSize: '13px',
-    color: '#64748b'
-  },
-  link: {
-    color: '#2563eb',
-    fontWeight: '600',
-    textDecoration: 'none'
+    fontSize: '12px',
+    color: '#94a3b8'
   }
 };

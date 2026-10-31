@@ -174,3 +174,84 @@ export const announcementsApi = {
   create: (data) => request('/announcements', { method: 'POST', body: JSON.stringify(data) }),
   delete: (id) => request(`/announcements/${id}`, { method: 'DELETE' })
 };
+
+// ----------------- Super Admin Panel API -----------------
+export const superAdminApi = {
+  getOverview: () => request('/super-admin/overview'),
+  getSchools: () => request('/super-admin/schools'),
+  createSchool: (data) => request('/super-admin/schools', { method: 'POST', body: JSON.stringify(data) }),
+  updateSchool: (id, data) => request(`/super-admin/schools/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+};
+
+// ----------------- Principal Panel API -----------------
+export const principalApi = {
+  getOverview: () => request('/principal/overview'),
+  approveRequest: (id) => request(`/principal/approvals/${id}`, { method: 'POST' })
+};
+
+// ----------------- Teacher Portal API -----------------
+export const teacherPortalApi = {
+  getDashboard: () => request('/teacher/dashboard-data'),
+  getMyStudents: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/teacher/my-students?${query}`);
+  },
+  getHomework: () => request('/teacher/homework'),
+  createHomework: (data) => request('/teacher/homework', { method: 'POST', body: JSON.stringify(data) })
+};
+
+// ----------------- Accountant Portal API -----------------
+export const accountantPortalApi = {
+  getDashboard: () => request('/accountant/dashboard-data'),
+  getPendingDues: () => request('/accountant/pending-dues')
+};
+
+// ----------------- Receptionist Portal API -----------------
+export const receptionistPortalApi = {
+  getDashboard: () => request('/receptionist/dashboard-data'),
+  getEnquiries: (status) => request(`/receptionist/enquiries${status ? `?status=${status}` : ''}`),
+  createEnquiry: (data) => request('/receptionist/enquiries', { method: 'POST', body: JSON.stringify(data) }),
+  updateEnquiryStatus: (id, data) => request(`/receptionist/enquiries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  searchStudent: (q) => request(`/receptionist/search-student?q=${encodeURIComponent(q || '')}`)
+};
+
+// ----------------- Librarian Portal API -----------------
+export const librarianPortalApi = {
+  getDashboard: () => request('/librarian/dashboard-data'),
+  getBooks: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/librarian/books?${query}`);
+  },
+  createBook: (data) => request('/librarian/books', { method: 'POST', body: JSON.stringify(data) }),
+  issueBook: (data) => request('/librarian/issue-book', { method: 'POST', body: JSON.stringify(data) }),
+  returnBook: (id, data) => request(`/librarian/return-book/${id}`, { method: 'POST', body: JSON.stringify(data) })
+};
+
+// ----------------- Transport Manager Portal API -----------------
+export const transportPortalApi = {
+  getDashboard: () => request('/transport/dashboard-data'),
+  getVehicles: () => request('/transport/vehicles'),
+  createVehicle: (data) => request('/transport/vehicles', { method: 'POST', body: JSON.stringify(data) }),
+  getRoutes: () => request('/transport/routes'),
+  createRoute: (data) => request('/transport/routes', { method: 'POST', body: JSON.stringify(data) }),
+  allocateStudent: (data) => request('/transport/allocate-student', { method: 'POST', body: JSON.stringify(data) })
+};
+
+// ----------------- Parent Portal API -----------------
+export const parentPortalApi = {
+  getDashboard: () => request('/parent/dashboard-data'),
+  getChildOverview: (studentId) => request(`/parent/child/${studentId}`)
+};
+
+// ----------------- Student Portal API -----------------
+export const studentPortalApi = {
+  getDashboard: () => request('/student/dashboard-data'),
+  submitHomework: (homeworkId) => request(`/student/homework/${homeworkId}/submit`, { method: 'POST' })
+};
+
+// ----------------- Permissions API -----------------
+export const permissionsApi = {
+  getPermissions: () => request('/admin/permissions'),
+  togglePermission: (data) => request('/admin/permissions', { method: 'POST', body: JSON.stringify(data) })
+};
+
