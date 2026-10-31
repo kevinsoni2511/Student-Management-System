@@ -3,7 +3,7 @@
  * Base URL defaults to http://127.0.0.1:8000/api
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const tokenStorage = {
   get: () => localStorage.getItem('sms_auth_token'),
@@ -54,7 +54,7 @@ export async function request(endpoint, options = {}) {
     return data;
   } catch (err) {
     if (err.name === 'TypeError' && err.message.includes('Failed to fetch')) {
-      const networkErr = new Error('Cannot connect to Laravel backend at ' + API_BASE_URL + '. Ensure `php artisan serve` is running.');
+      const networkErr = new Error('Cannot connect to Laravel backend. Ensure `php artisan serve` is running in the backend folder.');
       networkErr.isNetworkError = true;
       throw networkErr;
     }

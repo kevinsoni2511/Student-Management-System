@@ -15,7 +15,7 @@ use App\Http\Controllers\AttendanceController;
 
 // Public Authentication Endpoints
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->name('login');
 
 // Protected Administrator Endpoints (Laravel Sanctum)
 Route::middleware('auth:sanctum')->group(function () {
