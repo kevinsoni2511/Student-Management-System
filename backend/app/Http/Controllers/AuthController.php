@@ -64,7 +64,8 @@ class AuthController extends Controller
         // Revoke previous tokens for clean session
         $user->tokens()->delete();
 
-        $token = $user->createToken('admin_token')->plainTextToken;
+        $token = $user->createToken('erp_token')->plainTextToken;
+        $user->load('school');
 
         return response()->json([
             'success' => true,
@@ -74,6 +75,9 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'school_id' => $user->school_id,
+                'school' => $user->school,
+                'avatar' => $user->avatar,
             ],
             'token' => $token,
         ]);
@@ -95,11 +99,12 @@ class AuthController extends Controller
     }
 
     /**
-     * Authenticated Administrator Info
+     * Authenticated User Info
      */
     public function me(Request $request)
     {
         $user = $request->user();
+        $user->load('school');
 
         return response()->json([
             'success' => true,
@@ -108,6 +113,9 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'school_id' => $user->school_id,
+                'school' => $user->school,
+                'avatar' => $user->avatar,
             ],
         ]);
     }

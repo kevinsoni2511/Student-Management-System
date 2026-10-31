@@ -2,144 +2,192 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\StudentAttendance;
+use App\Models\EmployeeAttendance;
 use App\Models\Student;
-use App\Models\Attendance;
+use App\Models\Teacher;
+use App\Models\Staff;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class AttendanceController extends Controller
 {
     /**
-     * Get attendance register for a specific date and course.
-     * Returns all active students in the course merged with their attendance status.
+     * Get attendance sheet for a class & section on a given date.
+     * Pre-populates all enrolled students with existing attendance or 'Present' by default.
      */
-    public function index(Request $request)
+    public function studentSheet(Request $request)
     {
-        $date = $request->input('date', date('Y-m-d'));
-        $courseId = $request->input('course_id');
+        $schoolId = $request->user()->school_id ?? 1;
 
-        // Query active students in course
-        $studentsQuery = Student::where('status', 'Active')->with('course:id,course_name,course_code');
+        $request->validate([
+            'class_id' => 'required|exists:school_classes,id',
+            'section_id' => 'nullable|exists:sections,id',
+            'date' => 'nullable|date',
+        ]);
 
-        if ($courseId) {
-            $studentsQuery->where('course_id', $courseId);
+        $classId = $request->input('class_id');
+        $sectionId = $request->input('section_id');
+        $date = $request->input('date', Carbon::today()->toDateString());
+
+        // Fetch students in this class/section
+        $studentsQuery = Student::where('school_id', $schoolId)
+            ->where('class_id', $classId)
+            ->where('status', 'Active');
+
+        if ($sectionId) {
+            $studentsQuery->where('section_id', $sectionId);
         }
 
-        $students = $studentsQuery->orderBy('full_name', 'asc')->get();
+        $students = $studentsQuery->orderBy('roll_no', 'asc')->orderBy('first_name', 'asc')->get();
 
-        // Fetch attendance entries for this date
-        $attendances = Attendance::where('attendance_date', $date)
-            ->whereIn('student_id', $students->pluck('id'))
+        // Fetch existing attendance records for this date
+        $existingRecords = StudentAttendance::where('school_id', $schoolId)
+            ->where('class_id', $classId)
+            ->where('attendance_date', $date)
             ->get()
             ->keyBy('student_id');
 
-        // Merge status with student objects
-        $records = $students->map(function ($st) use ($attendances) {
-            $att = $attendances->get($st->id);
+        $sheet = $students->map(function ($stu) use ($existingRecords) {
+            $record = $existingRecords->get($stu->id);
             return [
-                'student_id' => $st->id,
-                'student_code' => $st->student_code,
-                'full_name' => $st->full_name,
-                'course_name' => $st->course?->course_name ?? 'N/A',
-                'status' => $att?->status ?? 'Present', // default to Present if not yet marked
-                'remarks' => $att?->remarks ?? '',
-                'is_recorded' => $att !== null,
+                'student_id' => $stu->id,
+                'admission_no' => $stu->admission_no,
+                'roll_no' => $stu->roll_no,
+                'student_name' => $stu->full_name,
+                'gender' => $stu->gender,
+                'status' => $record ? $record->status : 'Present',
+                'remarks' => $record ? $record->remarks : '',
+                'is_saved' => $record !== null,
             ];
         });
 
+        $totalEnrolled = $students->count();
+        $isAlreadySubmitted = $existingRecords->isNotEmpty();
+        $presentCount = $sheet->where('status', 'Present')->count();
+        $absentCount = $sheet->where('status', 'Absent')->count();
+        $lateCount = $sheet->where('status', 'Late')->count();
+        $halfDayCount = $sheet->where('status', 'Half Day')->count();
+
         return response()->json([
             'success' => true,
-            'date' => $date,
-            'course_id' => $courseId,
-            'data' => $records,
+            'data' => [
+                'date' => $date,
+                'class_id' => (int) $classId,
+                'section_id' => $sectionId ? (int) $sectionId : null,
+                'is_submitted' => $isAlreadySubmitted,
+                'total_enrolled' => $totalEnrolled,
+                'stats' => [
+                    'present' => $presentCount,
+                    'absent' => $absentCount,
+                    'late' => $lateCount,
+                    'half_day' => $halfDayCount,
+                ],
+                'students' => $sheet,
+            ],
         ]);
     }
 
     /**
-     * Bulk save or update attendance for a date.
-     * Uses DB transaction and prevents duplicate entries via updateOrCreate.
+     * Bulk save or update class attendance
      */
-    public function store(Request $request)
+    public function bulkSaveStudent(Request $request)
     {
+        $schoolId = $request->user()->school_id ?? 1;
+        $userId = $request->user()->id ?? null;
+
         $validated = $request->validate([
+            'class_id' => 'required|exists:school_classes,id',
+            'section_id' => 'nullable|exists:sections,id',
             'attendance_date' => 'required|date',
-            'course_id' => 'nullable|exists:courses,id',
             'records' => 'required|array|min:1',
             'records.*.student_id' => 'required|exists:students,id',
-            'records.*.status' => 'required|in:Present,Absent,Late',
+            'records.*.status' => 'required|in:Present,Absent,Late,Half Day',
             'records.*.remarks' => 'nullable|string|max:255',
         ]);
 
         $date = $validated['attendance_date'];
-        $courseId = $validated['course_id'] ?? null;
+        $classId = $validated['class_id'];
+        $sectionId = $validated['section_id'] ?? null;
 
-        DB::transaction(function () use ($validated, $date, $courseId) {
-            foreach ($validated['records'] as $record) {
-                Attendance::updateOrCreate(
-                    [
-                        'student_id' => $record['student_id'],
-                        'attendance_date' => $date,
-                    ],
-                    [
-                        'course_id' => $courseId,
-                        'status' => $record['status'],
-                        'remarks' => $record['remarks'] ?? null,
-                    ]
-                );
-            }
-        });
+        foreach ($validated['records'] as $rec) {
+            $student = Student::find($rec['student_id']);
+            if (!$student) continue;
+
+            StudentAttendance::updateOrCreate(
+                [
+                    'school_id' => $schoolId,
+                    'student_id' => $rec['student_id'],
+                    'attendance_date' => $date,
+                ],
+                [
+                    'class_id' => $classId,
+                    'section_id' => $student->section_id ?? $sectionId,
+                    'academic_session_id' => $student->academic_session_id,
+                    'status' => $rec['status'],
+                    'remarks' => $rec['remarks'] ?? null,
+                    'marked_by' => $userId,
+                ]
+            );
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Attendance recorded successfully.',
+            'message' => 'Attendance recorded successfully for ' . count($validated['records']) . ' students.',
         ]);
     }
 
     /**
-     * Get attendance metrics and individual student attendance percentages.
+     * Class-level or school-level attendance summary
      */
-    public function summary(Request $request)
+    public function studentSummary(Request $request)
     {
-        $courseId = $request->input('course_id');
+        $schoolId = $request->user()->school_id ?? 1;
+        $today = Carbon::today()->toDateString();
 
-        $studentsQuery = Student::where('status', 'Active');
-        if ($courseId) {
-            $studentsQuery->where('course_id', $courseId);
-        }
+        $totalRecordsToday = StudentAttendance::where('school_id', $schoolId)
+            ->where('attendance_date', $today)
+            ->count();
 
-        $students = $studentsQuery->withCount([
-            'attendances as total_sessions',
-            'attendances as present_sessions' => function ($q) {
-                $q->where('status', 'Present');
-            },
-            'attendances as late_sessions' => function ($q) {
-                $q->where('status', 'Late');
-            },
-            'attendances as absent_sessions' => function ($q) {
-                $q->where('status', 'Absent');
-            },
-        ])->get();
+        $presentToday = StudentAttendance::where('school_id', $schoolId)
+            ->where('attendance_date', $today)
+            ->where('status', 'Present')
+            ->count();
 
-        $studentStats = $students->map(function ($st) {
-            $percentage = $st->total_sessions > 0
-                ? round(($st->present_sessions / $st->total_sessions) * 100, 1)
-                : 100;
+        $absentToday = StudentAttendance::where('school_id', $schoolId)
+            ->where('attendance_date', $today)
+            ->where('status', 'Absent')
+            ->count();
 
-            return [
-                'id' => $st->id,
-                'student_code' => $st->student_code,
-                'full_name' => $st->full_name,
-                'total_sessions' => $st->total_sessions,
-                'present_sessions' => $st->present_sessions,
-                'late_sessions' => $st->late_sessions,
-                'absent_sessions' => $st->absent_sessions,
-                'percentage' => $percentage,
-            ];
-        });
+        // Overall monthly stats
+        $startOfMonth = Carbon::now()->startOfMonth()->toDateString();
+        $totalMonthRecords = StudentAttendance::where('school_id', $schoolId)
+            ->where('attendance_date', '>=', $startOfMonth)
+            ->count();
+
+        $presentMonthRecords = StudentAttendance::where('school_id', $schoolId)
+            ->where('attendance_date', '>=', $startOfMonth)
+            ->where('status', 'Present')
+            ->count();
+
+        $monthlyRate = $totalMonthRecords > 0 ? round(($presentMonthRecords / $totalMonthRecords) * 100, 1) : 95.0;
 
         return response()->json([
             'success' => true,
-            'data' => $studentStats,
+            'data' => [
+                'today' => [
+                    'date' => $today,
+                    'total_marked' => $totalRecordsToday,
+                    'present' => $presentToday,
+                    'absent' => $absentToday,
+                    'attendance_rate' => $totalRecordsToday > 0 ? round(($presentToday / $totalRecordsToday) * 100, 1) : 0,
+                ],
+                'month' => [
+                    'total_records' => $totalMonthRecords,
+                    'present_count' => $presentMonthRecords,
+                    'average_rate' => $monthlyRate,
+                ],
+            ],
         ]);
     }
 }

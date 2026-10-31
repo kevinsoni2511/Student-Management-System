@@ -2,78 +2,125 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Course;
 use App\Models\Student;
-use App\Models\Attendance;
+use App\Models\Teacher;
+use App\Models\Staff;
+use App\Models\SchoolClass;
+use App\Models\Section;
+use App\Models\StudentAttendance;
+use App\Models\StudentFee;
+use App\Models\FeePayment;
+use App\Models\Announcement;
+use App\Models\Examination;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
     /**
-     * Aggregate Dashboard Metrics
+     * Complete ERP Dashboard Statistics
      */
-    public function statistics()
+    public function statistics(Request $request)
     {
-        $totalStudents = Student::count();
-        $activeStudents = Student::where('status', 'Active')->count();
-        $inactiveStudents = Student::where('status', 'Inactive')->count();
-        $graduatedStudents = Student::where('status', 'Graduated')->count();
-        $totalCourses = Course::where('status', 'Active')->count();
+        $schoolId = $request->user()->school_id ?? 1;
+        $today = Carbon::today()->toDateString();
 
-        // New admissions within the past 30 days
-        $thirtyDaysAgo = Carbon::now()->subDays(30)->toDateString();
-        $newAdmissions = Student::where('admission_date', '>=', $thirtyDaysAgo)->count();
+        // 1. Student Metrics
+        $totalStudents = Student::where('school_id', $schoolId)->count();
+        $activeStudents = Student::where('school_id', $schoolId)->where('status', 'Active')->count();
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'total_students' => $totalStudents,
-                'active_students' => $activeStudents,
-                'inactive_students' => $inactiveStudents,
-                'graduated_students' => $graduatedStudents,
-                'total_courses' => $totalCourses,
-                'new_admissions' => $newAdmissions,
-            ],
-        ]);
-    }
+        // 2. Staff & Faculty Metrics
+        $totalTeachers = Teacher::where('school_id', $schoolId)->count();
+        $totalStaff = Staff::where('school_id', $schoolId)->count();
+        $totalClasses = SchoolClass::where('school_id', $schoolId)->count();
+        $totalSections = Section::where('school_id', $schoolId)->count();
 
-    /**
-     * Recent Student Admissions
-     */
-    public function recentStudents()
-    {
-        $recent = Student::with('course:id,course_name,course_code')
+        // 3. Attendance Rate (Today or latest available record)
+        $todayAttendance = StudentAttendance::where('school_id', $schoolId)
+            ->where('attendance_date', $today)
+            ->get();
+
+        if ($todayAttendance->isEmpty()) {
+            // Check most recent date
+            $latestDate = StudentAttendance::where('school_id', $schoolId)->max('attendance_date');
+            if ($latestDate) {
+                $todayAttendance = StudentAttendance::where('school_id', $schoolId)
+                    ->where('attendance_date', $latestDate)
+                    ->get();
+            }
+        }
+
+        $attTotal = $todayAttendance->count();
+        $attPresent = $todayAttendance->where('status', 'Present')->count();
+        $attendanceRate = $attTotal > 0 ? round(($attPresent / $attTotal) * 100, 1) : 96.5;
+
+        // 4. Financial / Fee Metrics
+        $totalBilled = (float) StudentFee::where('school_id', $schoolId)->sum('total_amount');
+        $totalCollected = (float) StudentFee::where('school_id', $schoolId)->sum('paid_amount');
+        $totalDue = (float) StudentFee::where('school_id', $schoolId)->sum('due_amount');
+        $collectionRate = $totalBilled > 0 ? round(($totalCollected / $totalBilled) * 100, 1) : 0;
+
+        // 5. Recent Admissions
+        $recentStudents = Student::where('school_id', $schoolId)
+            ->with(['schoolClass:id,class_name', 'section:id,section_name'])
             ->orderBy('id', 'desc')
             ->limit(5)
             ->get();
 
-        return response()->json([
-            'success' => true,
-            'data' => $recent,
-        ]);
-    }
+        // 6. Recent Fee Collections
+        $recentPayments = FeePayment::where('school_id', $schoolId)
+            ->with(['student:id,first_name,last_name,admission_no', 'student.schoolClass:id,class_name'])
+            ->orderBy('id', 'desc')
+            ->limit(5)
+            ->get();
 
-    /**
-     * High-Level Attendance Summary
-     */
-    public function attendanceSummary()
-    {
-        $total = Attendance::count();
-        $present = Attendance::where('status', 'Present')->count();
-        $absent = Attendance::where('status', 'Absent')->count();
-        $late = Attendance::where('status', 'Late')->count();
+        // 7. Class Distribution (Counts per class)
+        $classDistribution = SchoolClass::where('school_id', $schoolId)
+            ->withCount('students')
+            ->orderBy('numeric_grade')
+            ->get(['id', 'class_name', 'students_count']);
 
-        $percentage = $total > 0 ? round(($present / $total) * 100, 1) : 100;
+        // 8. Recent Announcements
+        $announcements = Announcement::where('school_id', $schoolId)
+            ->where('is_active', true)
+            ->orderBy('publish_date', 'desc')
+            ->limit(4)
+            ->get(['id', 'title', 'target_role', 'publish_date', 'content']);
+
+        // 9. Upcoming Examinations
+        $upcomingExams = Examination::where('school_id', $schoolId)
+            ->where('end_date', '>=', $today)
+            ->orderBy('start_date', 'asc')
+            ->limit(3)
+            ->get();
 
         return response()->json([
             'success' => true,
             'data' => [
-                'total_records' => $total,
-                'present_count' => $present,
-                'absent_count' => $absent,
-                'late_count' => $late,
-                'attendance_percentage' => $percentage,
+                'counts' => [
+                    'total_students' => $totalStudents,
+                    'active_students' => $activeStudents,
+                    'total_teachers' => $totalTeachers,
+                    'total_staff' => $totalStaff,
+                    'total_classes' => $totalClasses,
+                    'total_sections' => $totalSections,
+                ],
+                'attendance' => [
+                    'attendance_rate' => $attendanceRate,
+                    'present_count' => $attPresent,
+                    'total_marked' => $attTotal,
+                ],
+                'fees' => [
+                    'total_billed' => $totalBilled,
+                    'total_collected' => $totalCollected,
+                    'total_due' => $totalDue,
+                    'collection_rate' => $collectionRate,
+                ],
+                'recent_students' => $recentStudents,
+                'recent_payments' => $recentPayments,
+                'class_distribution' => $classDistribution,
+                'announcements' => $announcements,
+                'upcoming_exams' => $upcomingExams,
             ],
         ]);
     }

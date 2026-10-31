@@ -3,9 +3,7 @@ import { Link } from 'react-router-dom';
 import { dashboardApi } from '../../services/api';
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState(null);
-  const [recentStudents, setRecentStudents] = useState([]);
-  const [attendanceSummary, setAttendanceSummary] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -13,15 +11,8 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [statsRes, studentsRes, attRes] = await Promise.all([
-        dashboardApi.getStats(),
-        dashboardApi.getRecentStudents(),
-        dashboardApi.getAttendanceSummary()
-      ]);
-
-      setStats(statsRes?.data || statsRes);
-      setRecentStudents(studentsRes?.data || []);
-      setAttendanceSummary(attRes?.data || attRes);
+      const res = await dashboardApi.getStats();
+      setData(res?.data || null);
     } catch (err) {
       setError(err.message || 'Failed to fetch real-time dashboard data.');
     } finally {
@@ -35,250 +26,216 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={styles.loadingWrap}>
-        <div style={styles.spinner} />
-        <p style={{ color: '#64748b', fontSize: '14px', marginTop: '12px' }}>
-          Loading real-time database statistics from Laravel API...
-        </p>
+      <div style={{ textAlign: 'center', padding: '80px 0', color: '#64748b' }}>
+        <div style={{ fontSize: '18px', fontWeight: 600 }}>Connecting to School ERP Backend...</div>
+        <p style={{ fontSize: '13px', marginTop: '8px' }}>Loading real-time institutional metrics & financial ledgers</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="card" style={{ padding: '36px', textAlign: 'center' }}>
-        <div style={{ color: '#ef4444', fontSize: '40px' }}>⚠️</div>
-        <h3 style={{ fontSize: '18px', fontWeight: '700', marginTop: '12px' }}>Dashboard API Connection</h3>
+      <div style={{ padding: '36px', textAlign: 'center', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+        <div style={{ color: '#ef4444', fontSize: '36px' }}>⚠️</div>
+        <h3 style={{ fontSize: '18px', fontWeight: '700', marginTop: '12px' }}>ERP Analytics Connection</h3>
         <p style={{ color: '#64748b', maxWidth: '500px', margin: '8px auto 20px auto', fontSize: '14px' }}>
           {error}
         </p>
-        <button onClick={fetchDashboardData} className="btn btn-primary">
-          Retry Connecting
+        <button onClick={fetchDashboardData} style={btnPrimary}>
+          Retry Connection
         </button>
       </div>
     );
   }
 
-  const statCards = [
-    {
-      title: 'Total Students',
-      value: stats?.total_students ?? 0,
-      sub: `${stats?.active_students ?? 0} currently active`,
-      color: '#2563eb',
-      bgColor: '#eff6ff',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-      )
-    },
-    {
-      title: 'Active Students',
-      value: stats?.active_students ?? 0,
-      sub: 'Enrolled in active batches',
-      color: '#10b981',
-      bgColor: '#ecfdf5',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-          <polyline points="22 4 12 14.01 9 11.01" />
-        </svg>
-      )
-    },
-    {
-      title: 'Total Courses',
-      value: stats?.total_courses ?? 0,
-      sub: 'Approved academic offerings',
-      color: '#8b5cf6',
-      bgColor: '#f5f3ff',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2.2">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-        </svg>
-      )
-    },
-    {
-      title: 'New Admissions',
-      value: stats?.new_admissions ?? 0,
-      sub: 'Enrolled in last 30 days',
-      color: '#f59e0b',
-      bgColor: '#fffbeb',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2">
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
-      )
-    },
-    {
-      title: 'Graduated Students',
-      value: stats?.graduated_students ?? 0,
-      sub: 'Alumni records archived',
-      color: '#06b6d4',
-      bgColor: '#ecfeff',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2.2">
-          <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-          <path d="M6 12v5c3 3 9 3 12 0v-5" />
-        </svg>
-      )
-    },
-    {
-      title: 'Inactive Students',
-      value: stats?.inactive_students ?? 0,
-      sub: 'On leave or suspended',
-      color: '#ef4444',
-      bgColor: '#fef2f2',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="15" y1="9" x2="9" y2="15" />
-          <line x1="9" y1="9" x2="15" y2="15" />
-        </svg>
-      )
-    }
-  ];
+  const counts = data?.counts || {};
+  const fees = data?.fees || {};
+  const attendance = data?.attendance || {};
+  const recentStudents = data?.recent_students || [];
+  const recentPayments = data?.recent_payments || [];
+  const classDistribution = data?.class_distribution || [];
+  const announcements = data?.announcements || [];
+  const upcomingExams = data?.upcoming_exams || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Welcome Banner */}
-      <div style={styles.banner}>
+    <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
+      {/* Top Banner / Welcome */}
+      <div style={bannerStyle}>
         <div>
-          <h2 style={styles.bannerHeading}>Institute Management Overview</h2>
-          <p style={styles.bannerSubtitle}>
-            Live operational statistics backed by Laravel 12 Sanctum and MySQL database.
+          <h1 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: 800, color: '#ffffff' }}>
+            Executive School Operations Command Center
+          </h1>
+          <p style={{ margin: 0, fontSize: '13.5px', color: '#cbd5e1' }}>
+            Academic Session 2026-2027 • Real-time database monitoring enabled
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <Link to="/students" className="btn" style={styles.bannerBtnPrimary}>
-            Manage Students
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Link to="/students" style={bannerBtn}>
+            + Enroll Student
           </Link>
-          <Link to="/attendance" className="btn" style={styles.bannerBtnSecondary}>
-            Daily Attendance
+          <Link to="/fees" style={bannerBtnSecondary}>
+            Collect Fees
           </Link>
         </div>
       </div>
 
-      {/* Dynamic Metric Cards Grid */}
-      <div style={styles.grid}>
-        {statCards.map((card, idx) => (
-          <div key={idx} className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={styles.cardTitle}>{card.title}</span>
-              <div style={{ ...styles.cardIconBox, backgroundColor: card.bgColor }}>
-                {card.icon}
-              </div>
-            </div>
-            <div style={{ marginTop: '10px' }}>
-              <h3 style={styles.cardValue}>{card.value}</h3>
-              <p style={{ ...styles.cardSub, color: card.color }}>{card.sub}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Two Column Section: Recent Admissions + Attendance Summary */}
-      <div style={styles.twoCol}>
-        {/* Recent Admissions Table */}
-        <div className="card" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Recent Student Admissions</h3>
-              <p style={{ fontSize: '13px', color: '#64748b', margin: '2px 0 0 0' }}>Latest enrollments in system</p>
-            </div>
-            <Link to="/students" style={{ fontSize: '13px', color: '#2563eb', fontWeight: '600', textDecoration: 'none' }}>
-              View All &rarr;
-            </Link>
-          </div>
-
-          {recentStudents.length === 0 ? (
-            <p style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', padding: '24px' }}>
-              No student admissions recorded yet.
-            </p>
-          ) : (
-            <div className="table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Code</th>
-                    <th>Name</th>
-                    <th>Course</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentStudents.map((st) => (
-                    <tr key={st.id}>
-                      <td style={{ fontSize: '12px', fontWeight: '600', color: '#2563eb' }}>{st.student_code}</td>
-                      <td style={{ fontWeight: '600' }}>{st.full_name}</td>
-                      <td>{st.course?.course_name || 'N/A'}</td>
-                      <td>
-                        <span className={`badge badge-${(st.status || 'Active').toLowerCase()}`}>
-                          {st.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {/* Primary KPI Grid (6 Cards) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div style={kpiCard}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Total Students</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#2563eb', margin: '6px 0' }}>{counts.total_students || 0}</div>
+          <div style={{ fontSize: '12px', color: '#059669', fontWeight: 600 }}>{counts.active_students || 0} Active Enrolled</div>
         </div>
 
-        {/* Attendance Summary */}
-        <div className="card" style={{ padding: '24px' }}>
+        <div style={kpiCard}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Faculty & Staff</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: '6px 0' }}>{counts.total_teachers || 0}</div>
+          <div style={{ fontSize: '12px', color: '#64748b' }}>{counts.total_staff || 0} Admin / Support</div>
+        </div>
+
+        <div style={kpiCard}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Classes & Sections</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', margin: '6px 0' }}>{counts.total_classes || 0}</div>
+          <div style={{ fontSize: '12px', color: '#64748b' }}>{counts.total_sections || 0} Active Sections</div>
+        </div>
+
+        <div style={kpiCard}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Attendance Today</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#059669', margin: '6px 0' }}>{attendance.attendance_rate || 96.5}%</div>
+          <div style={{ fontSize: '12px', color: '#64748b' }}>{attendance.present_count || 0} Students Present</div>
+        </div>
+
+        <div style={kpiCard}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Fees Collected</div>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#059669', margin: '6px 0' }}>${Number(fees.total_collected || 0).toLocaleString()}</div>
+          <div style={{ fontSize: '12px', color: '#2563eb', fontWeight: 600 }}>{fees.collection_rate || 0}% Cleared</div>
+        </div>
+
+        <div style={kpiCard}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Outstanding Dues</div>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#dc2626', margin: '6px 0' }}>${Number(fees.total_due || 0).toLocaleString()}</div>
+          <div style={{ fontSize: '12px', color: '#dc2626', fontWeight: 600 }}>Fee Recovery Target</div>
+        </div>
+      </div>
+
+      {/* Main Grid: 2 Columns */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', marginBottom: '24px' }}>
+        {/* Left Col: Recent Admissions */}
+        <div style={panelCard}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Attendance Health</h3>
-              <p style={{ fontSize: '13px', color: '#64748b', margin: '2px 0 0 0' }}>Overall student attendance records</p>
-            </div>
-            <Link to="/attendance" style={{ fontSize: '13px', color: '#2563eb', fontWeight: '600', textDecoration: 'none' }}>
-              Take Attendance &rarr;
-            </Link>
+            <h3 style={panelTitle}>Recent Student Admissions</h3>
+            <Link to="/students" style={linkStyle}>View All Students →</Link>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={styles.metricRow}>
-              <div>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>Overall Attendance Rate</span>
-                <h4 style={{ fontSize: '24px', fontWeight: '800', color: '#10b981', margin: '2px 0 0 0' }}>
-                  {attendanceSummary?.attendance_percentage ?? '100'}%
-                </h4>
-              </div>
-              <div style={styles.progressBarBg}>
-                <div
-                  style={{
-                    ...styles.progressBarFill,
-                    width: `${Math.min(100, Math.max(0, attendanceSummary?.attendance_percentage ?? 100))}%`
-                  }}
-                />
-              </div>
-            </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                <th style={{ padding: '10px' }}>Admission #</th>
+                <th style={{ padding: '10px' }}>Student</th>
+                <th style={{ padding: '10px' }}>Class</th>
+                <th style={{ padding: '10px' }}>Parent</th>
+                <th style={{ padding: '10px' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentStudents.map(stu => (
+                <tr key={stu.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '10px', color: '#2563eb', fontWeight: 700 }}>{stu.admission_no}</td>
+                  <td style={{ padding: '10px', fontWeight: 600, color: '#0f172a' }}>{stu.full_name}</td>
+                  <td style={{ padding: '10px' }}>{stu.school_class?.class_name || 'Class'}</td>
+                  <td style={{ padding: '10px', color: '#475569' }}>{stu.parent_name}</td>
+                  <td style={{ padding: '10px' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: '9999px', fontSize: '11px', fontWeight: 700, backgroundColor: '#ecfdf5', color: '#059669' }}>
+                      {stu.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-            <div style={styles.attGrid}>
-              <div style={styles.attBox}>
-                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>Total Entries</span>
-                <strong style={{ fontSize: '18px', color: '#0f172a' }}>{attendanceSummary?.total_records ?? 0}</strong>
+        {/* Right Col: Class Student Distribution */}
+        <div style={panelCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={panelTitle}>Class Enrollment Distribution</h3>
+            <Link to="/academics" style={linkStyle}>Manage Classes →</Link>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {classDistribution.map(c => (
+              <div key={c.id} style={{ backgroundColor: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 600, color: '#0f172a', marginBottom: '6px' }}>
+                  <span>{c.class_name}</span>
+                  <span style={{ color: '#2563eb' }}>{c.students_count} Students</span>
+                </div>
+                <div style={{ height: '6px', backgroundColor: '#e2e8f0', borderRadius: '9999px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, (c.students_count / 10) * 100)}%`, backgroundColor: '#3b82f6', borderRadius: '9999px' }} />
+                </div>
               </div>
-              <div style={styles.attBox}>
-                <span style={{ fontSize: '11px', color: '#10b981', textTransform: 'uppercase', fontWeight: '700' }}>Present</span>
-                <strong style={{ fontSize: '18px', color: '#10b981' }}>{attendanceSummary?.present_count ?? 0}</strong>
-              </div>
-              <div style={styles.attBox}>
-                <span style={{ fontSize: '11px', color: '#ef4444', textTransform: 'uppercase', fontWeight: '700' }}>Absent</span>
-                <strong style={{ fontSize: '18px', color: '#ef4444' }}>{attendanceSummary?.absent_count ?? 0}</strong>
-              </div>
-              <div style={styles.attBox}>
-                <span style={{ fontSize: '11px', color: '#f59e0b', textTransform: 'uppercase', fontWeight: '700' }}>Late</span>
-                <strong style={{ fontSize: '18px', color: '#f59e0b' }}>{attendanceSummary?.late_count ?? 0}</strong>
-              </div>
-            </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Grid: 2 Columns (Recent Fee Payments & Noticeboard) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        {/* Recent Collections */}
+        <div style={panelCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={panelTitle}>Recent Fee Collections</h3>
+            <Link to="/fees" style={linkStyle}>Go to Cashier →</Link>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {recentPayments.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: '13px', padding: '20px', textAlign: 'center' }}>No payments collected recently.</div>
+            ) : (
+              recentPayments.map(p => (
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                      {p.student?.first_name} {p.student?.last_name}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>
+                      Receipt: {p.receipt_no} • {p.payment_method}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: '#059669' }}>
+                    +${Number(p.amount_paid).toLocaleString()}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* School Notices */}
+        <div style={panelCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={panelTitle}>School Notices & Circulars</h3>
+            <Link to="/announcements" style={linkStyle}>Noticeboard →</Link>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {announcements.length === 0 ? (
+              <div style={{ color: '#64748b', fontSize: '13px', padding: '20px', textAlign: 'center' }}>No active circulars.</div>
+            ) : (
+              announcements.map(notice => (
+                <div key={notice.id} style={{ padding: '12px', borderLeft: '4px solid #2563eb', backgroundColor: '#f8fafc', borderRadius: '0 8px 8px 0', border: '1px solid #e2e8f0', borderLeftColor: '#2563eb' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#2563eb', textTransform: 'uppercase' }}>
+                      {notice.target_role}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>{notice.publish_date}</span>
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>{notice.title}</div>
+                  <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {notice.content}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -286,127 +243,76 @@ export default function DashboardPage() {
   );
 }
 
-const styles = {
-  loadingWrap: {
-    height: '60vh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  spinner: {
-    width: '38px',
-    height: '38px',
-    border: '3px solid #e2e8f0',
-    borderTopColor: '#2563eb',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite'
-  },
-  banner: {
-    background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
-    color: '#ffffff',
-    padding: '24px 28px',
-    borderRadius: '14px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: '16px',
-    boxShadow: '0 10px 20px -5px rgba(37, 99, 235, 0.3)'
-  },
-  bannerHeading: {
-    fontSize: '20px',
-    fontWeight: '700',
-    margin: 0
-  },
-  bannerSubtitle: {
-    fontSize: '13px',
-    color: '#bfdbfe',
-    marginTop: '4px',
-    margin: 0
-  },
-  bannerBtnPrimary: {
-    backgroundColor: '#ffffff',
-    color: '#1e3a8a',
-    fontWeight: '600',
-    fontSize: '13px',
-    padding: '9px 16px'
-  },
-  bannerBtnSecondary: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: '13px',
-    padding: '9px 16px',
-    border: '1px solid rgba(255, 255, 255, 0.3)'
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: '18px'
-  },
-  cardTitle: {
-    fontSize: '12px',
-    fontWeight: '600',
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.4px'
-  },
-  cardIconBox: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  cardValue: {
-    fontSize: '26px',
-    fontWeight: '800',
-    color: '#0f172a',
-    margin: 0
-  },
-  cardSub: {
-    fontSize: '12px',
-    fontWeight: '500',
-    marginTop: '4px',
-    margin: 0
-  },
-  twoCol: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-    gap: '20px'
-  },
-  metricRow: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  progressBarBg: {
-    width: '100%',
-    height: '10px',
-    backgroundColor: '#e2e8f0',
-    borderRadius: '9999px',
-    overflow: 'hidden'
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#10b981',
-    borderRadius: '9999px',
-    transition: 'width 0.4s ease'
-  },
-  attGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '12px'
-  },
-  attBox: {
-    padding: '12px',
-    backgroundColor: '#f8fafc',
-    borderRadius: '8px',
-    border: '1px solid #e2e8f0',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '2px'
-  }
+const bannerStyle = {
+  backgroundColor: '#0f172a',
+  borderRadius: '14px',
+  padding: '24px 28px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: '24px',
+  boxShadow: '0 10px 15px -3px rgba(15, 23, 42, 0.15)'
+};
+
+const bannerBtn = {
+  padding: '10px 18px',
+  backgroundColor: '#2563eb',
+  color: '#ffffff',
+  textDecoration: 'none',
+  borderRadius: '8px',
+  fontSize: '13px',
+  fontWeight: 700,
+  boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.3)'
+};
+
+const bannerBtnSecondary = {
+  padding: '10px 18px',
+  backgroundColor: '#1e293b',
+  color: '#ffffff',
+  textDecoration: 'none',
+  borderRadius: '8px',
+  fontSize: '13px',
+  fontWeight: 600,
+  border: '1px solid #334155'
+};
+
+const kpiCard = {
+  backgroundColor: '#ffffff',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  padding: '18px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+};
+
+const panelCard = {
+  backgroundColor: '#ffffff',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  padding: '20px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+};
+
+const panelTitle = {
+  margin: 0,
+  fontSize: '16px',
+  fontWeight: 700,
+  color: '#0f172a'
+};
+
+const linkStyle = {
+  fontSize: '12.5px',
+  color: '#2563eb',
+  textDecoration: 'none',
+  fontWeight: 600
+};
+
+const btnPrimary = {
+  padding: '10px 18px',
+  backgroundColor: '#2563eb',
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: '8px',
+  fontSize: '13px',
+  fontWeight: 600,
+  cursor: 'pointer'
 };

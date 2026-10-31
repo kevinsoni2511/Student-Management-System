@@ -8,9 +8,13 @@ import AdminLayout from './layouts/AdminLayout';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import DashboardPage from './pages/dashboard/DashboardPage';
+import AcademicsPage from './pages/academics/AcademicsPage';
 import StudentsPage from './pages/students/StudentsPage';
-import CoursesPage from './pages/courses/CoursesPage';
+import TeachersPage from './pages/teachers/TeachersPage';
 import AttendancePage from './pages/attendance/AttendancePage';
+import FeeCollectionPage from './pages/fees/FeeCollectionPage';
+import ExamsPage from './pages/examinations/ExamsPage';
+import AnnouncementsPage from './pages/announcements/AnnouncementsPage';
 
 export default function App() {
   return (
@@ -21,14 +25,18 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Protected Administrator Routes */}
+          {/* Protected School ERP Routes */}
           <Route element={<ProtectedRoute />}>
             <Route element={<AdminLayout />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/academics" element={<AcademicsPage />} />
               <Route path="/students" element={<StudentsPage />} />
-              <Route path="/courses" element={<CoursesPage />} />
+              <Route path="/teachers" element={<TeachersPage />} />
               <Route path="/attendance" element={<AttendancePage />} />
+              <Route path="/fees" element={<FeeCollectionPage />} />
+              <Route path="/examinations" element={<ExamsPage />} />
+              <Route path="/announcements" element={<AnnouncementsPage />} />
             </Route>
           </Route>
 

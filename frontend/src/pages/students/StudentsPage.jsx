@@ -1,37 +1,37 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { studentsApi, coursesApi } from '../../services/api';
+import { studentsApi, academicsApi } from '../../services/api';
 import StudentModal from './StudentModal';
 import StudentDetailsModal from './StudentDetailsModal';
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([]);
-  const [courses, setCourses] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0, per_page: 10 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   // Filters & Search & Pagination
   const [search, setSearch] = useState('');
-  const [courseFilter, setCourseFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
   const [genderFilter, setGenderFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState('desc');
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [studentToEdit, setStudentToEdit] = useState(null);
-  const [studentToView, setStudentToView] = useState(null);
-  const [studentToDelete, setStudentToDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
 
-  // Fetch courses list for filters & modals
+  // Load Form options (Classes and Sessions)
   useEffect(() => {
-    coursesApi.getAll().then((res) => {
-      setCourses(res?.data || []);
-    }).catch(() => {});
+    Promise.all([
+      academicsApi.getClasses(),
+      academicsApi.getSessions()
+    ]).then(([clsRes, sesRes]) => {
+      setClasses(clsRes?.data || []);
+      setSessions(sesRes?.data || []);
+    }).catch(err => console.error('Error fetching academic options:', err));
   }, []);
 
   const fetchStudents = useCallback(async () => {
@@ -40,405 +40,375 @@ export default function StudentsPage() {
     try {
       const res = await studentsApi.getAll({
         search,
-        course_id: courseFilter,
+        class_id: classFilter,
         gender: genderFilter,
         status: statusFilter,
-        sort_by: sortBy,
-        sort_order: sortOrder,
         page,
-        per_page: perPage
+        per_page: 10
       });
 
       setStudents(res?.data || []);
       if (res?.meta) {
         setMeta(res.meta);
-      } else {
-        setMeta({
-          current_page: res?.current_page || 1,
-          last_page: res?.last_page || 1,
-          total: res?.total || res?.data?.length || 0,
-          per_page: res?.per_page || perPage
-        });
       }
     } catch (err) {
-      setError(err.message || 'Failed to load students.');
+      setError(err.message || 'Failed to fetch student directory.');
     } finally {
       setLoading(false);
     }
-  }, [search, courseFilter, genderFilter, statusFilter, sortBy, sortOrder, page, perPage]);
+  }, [search, classFilter, genderFilter, statusFilter, page]);
 
   useEffect(() => {
     fetchStudents();
   }, [fetchStudents]);
 
-  const handleOpenAdd = () => {
-    setStudentToEdit(null);
-    setIsFormOpen(true);
-  };
-
-  const handleOpenEdit = (student) => {
-    setStudentToEdit(student);
-    setIsFormOpen(true);
-  };
-
-  const handleDelete = async () => {
-    if (!studentToDelete) return;
-    try {
-      setDeleting(true);
-      await studentsApi.delete(studentToDelete.id);
-      setStudentToDelete(null);
-      fetchStudents();
-    } catch (err) {
-      alert(err.message || 'Failed to delete student.');
-    } finally {
-      setDeleting(false);
+  const handleDelete = async (id, name) => {
+    if (window.confirm(`Are you sure you want to remove student: ${name}?`)) {
+      try {
+        await studentsApi.delete(id);
+        fetchStudents();
+      } catch (err) {
+        alert(err.message || 'Error deleting student');
+      }
     }
   };
 
-  const resetFilters = () => {
-    setSearch('');
-    setCourseFilter('');
-    setGenderFilter('');
-    setStatusFilter('');
-    setPage(1);
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Header & Actions */}
-      <div style={styles.topBar}>
+    <div style={{ maxWidth: '1240px', margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-            Student Management
-          </h2>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '2px 0 0 0' }}>
-            Browse, search, and manage student admission records
-          </p>
+          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>Students & Admissions</h1>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Enroll new candidates, track academic records, parent info, and attendance.</p>
         </div>
-        <button onClick={handleOpenAdd} className="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          <span>Add New Student</span>
+        <button
+          onClick={() => {
+            setStudentToEdit(null);
+            setIsFormOpen(true);
+          }}
+          style={btnPrimary}
+        >
+          + New Student Admission
         </button>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="card" style={{ padding: '18px 20px' }}>
-        <div style={styles.filterGrid}>
-          {/* Search Box */}
-          <div style={{ flex: '2', minWidth: '220px' }}>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Search by name, code, email, phone..."
-              className="form-control"
-            />
-          </div>
+      {/* Filter / Search Toolbar */}
+      <div style={toolbarStyle}>
+        <div style={{ flex: 1, minWidth: '220px' }}>
+          <input
+            type="text"
+            placeholder="Search by student name, admission #, parent name, phone..."
+            value={search}
+            onChange={e => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            style={inputStyle}
+          />
+        </div>
 
-          {/* Course Filter */}
-          <div style={{ flex: '1', minWidth: '160px' }}>
-            <select
-              value={courseFilter}
-              onChange={(e) => {
-                setCourseFilter(e.target.value);
-                setPage(1);
-              }}
-              className="form-control"
-            >
-              <option value="">All Courses</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>{c.course_name}</option>
+        <select
+          value={classFilter}
+          onChange={e => {
+            setClassFilter(e.target.value);
+            setPage(1);
+          }}
+          style={{ ...inputStyle, width: '160px' }}
+        >
+          <option value="">All Classes</option>
+          {classes.map(c => (
+            <option key={c.id} value={c.id}>{c.class_name}</option>
+          ))}
+        </select>
+
+        <select
+          value={genderFilter}
+          onChange={e => {
+            setGenderFilter(e.target.value);
+            setPage(1);
+          }}
+          style={{ ...inputStyle, width: '140px' }}
+        >
+          <option value="">All Genders</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Other">Other</option>
+        </select>
+
+        <select
+          value={statusFilter}
+          onChange={e => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          style={{ ...inputStyle, width: '140px' }}
+        >
+          <option value="">All Statuses</option>
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+          <option value="Alumni">Alumni</option>
+          <option value="Suspended">Suspended</option>
+        </select>
+      </div>
+
+      {error && (
+        <div style={{ padding: '12px 16px', backgroundColor: '#fef2f2', border: '1px solid #ef4444', color: '#991b1b', borderRadius: '8px', marginBottom: '20px' }}>
+          {error}
+        </div>
+      )}
+
+      {/* Table Container */}
+      <div style={tableContainer}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#64748b' }}>Loading student records...</div>
+        ) : students.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#64748b' }}>
+            No students found matching your search and filter criteria.
+          </div>
+        ) : (
+          <table style={tableStyle}>
+            <thead>
+              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={thStyle}>Admission #</th>
+                <th style={thStyle}>Student Name</th>
+                <th style={thStyle}>Class & Section</th>
+                <th style={thStyle}>Roll #</th>
+                <th style={thStyle}>Parent / Guardian</th>
+                <th style={thStyle}>Contact</th>
+                <th style={thStyle}>Status</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.map((stu) => (
+                <tr key={stu.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ ...tdStyle, fontWeight: 700, color: '#2563eb' }}>{stu.admission_no}</td>
+                  <td style={{ ...tdStyle, fontWeight: 600, color: '#0f172a' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={smallAvatar}>{stu.first_name ? stu.first_name[0] : 'S'}</div>
+                      <span>{stu.full_name}</span>
+                    </div>
+                  </td>
+                  <td style={tdStyle}>
+                    <span style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#eff6ff', color: '#1e40af', fontSize: '12px', fontWeight: 600 }}>
+                      {stu.school_class?.class_name || 'Class'} {stu.section ? `• Sec ${stu.section.section_name}` : ''}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>#{stu.roll_no || '-'}</td>
+                  <td style={tdStyle}>
+                    <div style={{ fontWeight: 600, color: '#334155' }}>{stu.parent_name}</div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>{stu.parent_relation || 'Parent'}</div>
+                  </td>
+                  <td style={tdStyle}>
+                    <div style={{ color: '#0f172a' }}>{stu.parent_phone}</div>
+                    {stu.phone && <div style={{ fontSize: '11px', color: '#64748b' }}>Stu: {stu.phone}</div>}
+                  </td>
+                  <td style={tdStyle}>
+                    <span style={{
+                      padding: '3px 8px',
+                      borderRadius: '9999px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      backgroundColor: stu.status === 'Active' ? '#ecfdf5' : '#fef2f2',
+                      color: stu.status === 'Active' ? '#059669' : '#dc2626'
+                    }}>
+                      {stu.status}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                      <button
+                        onClick={() => setSelectedStudentId(stu.id)}
+                        style={btnActionView}
+                        title="View Full Profile"
+                      >
+                        Profile
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStudentToEdit(stu);
+                          setIsFormOpen(true);
+                        }}
+                        style={btnActionEdit}
+                        title="Edit Details"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(stu.id, stu.full_name)}
+                        style={btnActionDelete}
+                        title="Delete Student"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ))}
-            </select>
-          </div>
+            </tbody>
+          </table>
+        )}
+      </div>
 
-          {/* Status Filter */}
-          <div style={{ flex: '1', minWidth: '130px' }}>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="form-control"
-            >
-              <option value="">All Statuses</option>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="Graduated">Graduated</option>
-            </select>
-          </div>
-
-          {/* Gender Filter */}
-          <div style={{ flex: '1', minWidth: '120px' }}>
-            <select
-              value={genderFilter}
-              onChange={(e) => {
-                setGenderFilter(e.target.value);
-                setPage(1);
-              }}
-              className="form-control"
-            >
-              <option value="">All Genders</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          {/* Reset Button */}
-          <button onClick={resetFilters} className="btn btn-secondary btn-sm" title="Clear Filters">
-            Reset
+      {/* Pagination Footer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', color: '#64748b', fontSize: '13px' }}>
+        <div>
+          Showing page <strong>{meta.current_page}</strong> of <strong>{meta.last_page}</strong> ({meta.total} enrolled students)
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            disabled={meta.current_page <= 1}
+            onClick={() => setPage(prev => Math.max(1, prev - 1))}
+            style={{ ...btnPagination, ...(meta.current_page <= 1 ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+          >
+            ← Previous
+          </button>
+          <button
+            disabled={meta.current_page >= meta.last_page}
+            onClick={() => setPage(prev => prev + 1)}
+            style={{ ...btnPagination, ...(meta.current_page >= meta.last_page ? { opacity: 0.5, cursor: 'not-allowed' } : {}) }}
+          >
+            Next →
           </button>
         </div>
       </div>
 
-      {/* Table Card */}
-      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '48px', textAlign: 'center' }}>
-            <div style={styles.spinner} />
-            <p style={{ color: '#64748b', fontSize: '13px', marginTop: '12px' }}>Loading student records...</p>
-          </div>
-        ) : error ? (
-          <div style={{ padding: '36px', textAlign: 'center', color: '#b91c1c' }}>
-            <p>{error}</p>
-            <button onClick={fetchStudents} className="btn btn-secondary btn-sm" style={{ marginTop: '10px' }}>
-              Retry
-            </button>
-          </div>
-        ) : students.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: '40px' }}>🎓</div>
-            <h3 style={{ fontSize: '16px', fontWeight: '700', marginTop: '8px' }}>No Students Found</h3>
-            <p style={{ color: '#64748b', fontSize: '13px', maxWidth: '400px', margin: '4px auto 16px auto' }}>
-              No student records matched your search or filters. Try adjusting your query or register a new student.
-            </p>
-            <button onClick={handleOpenAdd} className="btn btn-primary btn-sm">
-              Register First Student
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Student Code</th>
-                    <th>Full Name</th>
-                    <th>Email Address</th>
-                    <th>Phone</th>
-                    <th>Course</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((student) => (
-                    <tr key={student.id}>
-                      <td>
-                        <span style={styles.codeBadge}>{student.student_code}</span>
-                      </td>
-                      <td style={{ fontWeight: '600', color: '#0f172a' }}>
-                        {student.full_name}
-                      </td>
-                      <td>{student.email}</td>
-                      <td>{student.phone}</td>
-                      <td>
-                        <span style={styles.courseBadge}>
-                          {student.course?.course_name || 'N/A'}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge badge-${(student.status || 'Active').toLowerCase()}`}>
-                          {student.status}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            onClick={() => setStudentToView(student)}
-                            className="btn btn-secondary btn-sm"
-                            title="View Profile"
-                          >
-                            View
-                          </button>
-                          <button
-                            onClick={() => handleOpenEdit(student)}
-                            className="btn btn-secondary btn-sm"
-                            title="Edit Record"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => setStudentToDelete(student)}
-                            className="btn btn-danger btn-sm"
-                            title="Delete Student"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            <div style={styles.paginationBar}>
-              <div style={styles.perPageWrap}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>Rows per page:</span>
-                <select
-                  value={perPage}
-                  onChange={(e) => {
-                    setPerPage(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="form-control"
-                  style={{ width: '70px', padding: '4px 8px', height: '32px' }}
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>
-                  Showing {students.length} of {meta.total} records
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="btn btn-secondary btn-sm"
-                >
-                  &larr; Prev
-                </button>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>
-                  Page {meta.current_page} of {meta.last_page || 1}
-                </span>
-                <button
-                  disabled={page >= meta.last_page}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="btn btn-secondary btn-sm"
-                >
-                  Next &rarr;
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Add / Edit Modal */}
+      {/* Admissions / Edit Modal */}
       <StudentModal
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         onSaved={fetchStudents}
         studentToEdit={studentToEdit}
-        courses={courses}
+        classes={classes}
+        sessions={sessions}
       />
 
-      {/* View Details Modal */}
+      {/* Detailed Student Dossier Modal */}
       <StudentDetailsModal
-        isOpen={Boolean(studentToView)}
-        onClose={() => setStudentToView(null)}
-        student={studentToView}
-        onEdit={(st) => {
-          setStudentToView(null);
-          handleOpenEdit(st);
-        }}
+        isOpen={Boolean(selectedStudentId)}
+        onClose={() => setSelectedStudentId(null)}
+        studentId={selectedStudentId}
       />
-
-      {/* Confirm Delete Dialog */}
-      {studentToDelete && (
-        <div className="modal-overlay" onClick={() => setStudentToDelete(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ color: '#ef4444' }}>Confirm Student Deletion</h3>
-              <button onClick={() => setStudentToDelete(null)} className="modal-close">&times;</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ fontSize: '14px', color: '#475569', margin: 0 }}>
-                Are you sure you want to permanently delete student{' '}
-                <strong>{studentToDelete.full_name}</strong> (<code>{studentToDelete.student_code}</code>)?
-              </p>
-              <p style={{ fontSize: '12px', color: '#ef4444', marginTop: '8px', fontWeight: '500' }}>
-                This will delete the student and their associated attendance history. This action cannot be undone.
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setStudentToDelete(null)} className="btn btn-secondary" disabled={deleting}>
-                Cancel
-              </button>
-              <button onClick={handleDelete} className="btn btn-danger" disabled={deleting}>
-                {deleting ? 'Deleting...' : 'Delete Student'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-const styles = {
-  topBar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: '12px'
-  },
-  filterGrid: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: '12px'
-  },
-  spinner: {
-    width: '32px',
-    height: '32px',
-    border: '3px solid #e2e8f0',
-    borderTopColor: '#2563eb',
-    borderRadius: '50%',
-    margin: '0 auto',
-    animation: 'spin 0.8s linear infinite'
-  },
-  codeBadge: {
-    display: 'inline-block',
-    padding: '3px 8px',
-    backgroundColor: '#eff6ff',
-    color: '#2563eb',
-    borderRadius: '6px',
-    fontWeight: '600',
-    fontSize: '12px',
-    letterSpacing: '0.3px'
-  },
-  courseBadge: {
-    fontSize: '13px',
-    color: '#334155'
-  },
-  paginationBar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '14px 20px',
-    backgroundColor: '#f8fafc',
-    borderTop: '1px solid #e2e8f0',
-    flexWrap: 'wrap',
-    gap: '12px'
-  },
-  perPageWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
-  }
+const toolbarStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '12px',
+  marginBottom: '20px',
+  backgroundColor: '#ffffff',
+  padding: '14px',
+  borderRadius: '10px',
+  border: '1px solid #e2e8f0',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '10px 12px',
+  borderRadius: '8px',
+  border: '1px solid #cbd5e1',
+  fontSize: '13px',
+  boxSizing: 'border-box'
+};
+
+const tableContainer = {
+  backgroundColor: '#ffffff',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  overflowX: 'auto',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+};
+
+const tableStyle = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  textAlign: 'left',
+  fontSize: '13.5px',
+  minWidth: '900px'
+};
+
+const thStyle = {
+  padding: '14px 18px',
+  fontWeight: 600,
+  color: '#475569',
+  fontSize: '12px',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px'
+};
+
+const tdStyle = {
+  padding: '14px 18px',
+  color: '#334155'
+};
+
+const smallAvatar = {
+  width: '28px',
+  height: '28px',
+  borderRadius: '50%',
+  backgroundColor: '#3b82f6',
+  color: '#ffffff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '12px',
+  fontWeight: 700
+};
+
+const btnPrimary = {
+  padding: '10px 18px',
+  backgroundColor: '#2563eb',
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: '8px',
+  fontSize: '13.5px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+};
+
+const btnActionView = {
+  padding: '5px 10px',
+  backgroundColor: '#eff6ff',
+  border: '1px solid #bfdbfe',
+  borderRadius: '6px',
+  color: '#1d4ed8',
+  fontSize: '12px',
+  fontWeight: 600,
+  cursor: 'pointer'
+};
+
+const btnActionEdit = {
+  padding: '5px 10px',
+  backgroundColor: '#f1f5f9',
+  border: '1px solid #cbd5e1',
+  borderRadius: '6px',
+  color: '#334155',
+  fontSize: '12px',
+  fontWeight: 600,
+  cursor: 'pointer'
+};
+
+const btnActionDelete = {
+  padding: '5px 8px',
+  backgroundColor: '#fef2f2',
+  border: '1px solid #fecaca',
+  borderRadius: '6px',
+  color: '#dc2626',
+  fontSize: '12px',
+  fontWeight: 700,
+  cursor: 'pointer'
+};
+
+const btnPagination = {
+  padding: '8px 14px',
+  backgroundColor: '#ffffff',
+  border: '1px solid #cbd5e1',
+  borderRadius: '6px',
+  fontSize: '12.5px',
+  fontWeight: 600,
+  color: '#334155',
+  cursor: 'pointer'
 };

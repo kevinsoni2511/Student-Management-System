@@ -1,531 +1,429 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { attendanceApi, coursesApi } from '../../services/api';
+import React, { useState, useEffect } from 'react';
+import { academicsApi, attendanceApi } from '../../services/api';
 
 export default function AttendancePage() {
-  const [courses, setCourses] = useState([]);
-  const [selectedCourse, setSelectedCourse] = useState('');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [classes, setClasses] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Mode: 'register' or 'history'
-  const [activeView, setActiveView] = useState('register');
-
-  // Register data
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [sheet, setSheet] = useState([]);
+  const [sheetMeta, setSheetMeta] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
+  const [error, setError] = useState(null);
 
-  // History/Analytics data
-  const [stats, setStats] = useState([]);
-  const [statsLoading, setStatsLoading] = useState(false);
-
-  // Fetch Courses list
+  // Load Classes on mount
   useEffect(() => {
-    coursesApi.getAll().then((res) => {
-      const list = res?.data || [];
-      setCourses(list);
-      if (list.length > 0 && !selectedCourse) {
-        setSelectedCourse(String(list[0].id));
+    academicsApi.getClasses().then(res => {
+      const cls = res?.data || [];
+      setClasses(cls);
+      if (cls.length > 0) {
+        setSelectedClassId(cls[0].id);
+        if (cls[0].sections && cls[0].sections.length > 0) {
+          setSections(cls[0].sections);
+          setSelectedSectionId(cls[0].sections[0].id);
+        }
       }
-    }).catch(() => {});
-  }, [selectedCourse]);
+    }).catch(err => console.error(err));
+  }, []);
 
-  // Fetch Attendance for chosen date & course
-  const fetchAttendanceRegister = useCallback(async () => {
-    setLoading(true);
-    setMessage(null);
-    try {
-      const res = await attendanceApi.getAll({
-        date: selectedDate,
-        course_id: selectedCourse
-      });
-      setRecords(res?.data || []);
-    } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Failed to load attendance.' });
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedDate, selectedCourse]);
-
-  // Fetch Attendance Statistics
-  const fetchStats = useCallback(async () => {
-    setStatsLoading(true);
-    try {
-      const res = await attendanceApi.getStats({ course_id: selectedCourse });
-      setStats(res?.data || []);
-    } catch {
-      // Ignore
-    } finally {
-      setStatsLoading(false);
-    }
-  }, [selectedCourse]);
-
-  useEffect(() => {
-    if (activeView === 'register') {
-      fetchAttendanceRegister();
+  // Update sections when class selection changes
+  const handleClassChange = (e) => {
+    const cid = e.target.value;
+    setSelectedClassId(cid);
+    const sel = classes.find(c => String(c.id) === String(cid));
+    if (sel && sel.sections && sel.sections.length > 0) {
+      setSections(sel.sections);
+      setSelectedSectionId(sel.sections[0].id);
     } else {
-      fetchStats();
+      setSections([]);
+      setSelectedSectionId('');
     }
-  }, [activeView, fetchAttendanceRegister, fetchStats]);
-
-  // Handle local state status change
-  const handleStatusChange = (studentId, status) => {
-    setRecords((prev) =>
-      prev.map((r) => (r.student_id === studentId ? { ...r, status } : r))
-    );
   };
 
-  const handleRemarksChange = (studentId, remarks) => {
-    setRecords((prev) =>
-      prev.map((r) => (r.student_id === studentId ? { ...r, remarks } : r))
-    );
-  };
+  // Fetch Attendance Sheet
+  useEffect(() => {
+    if (!selectedClassId) return;
 
-  // Mark all as Present shortcut
+    setLoading(true);
+    setError(null);
+    attendanceApi.getStudentSheet({
+      class_id: selectedClassId,
+      section_id: selectedSectionId,
+      date: attendanceDate
+    }).then(res => {
+      const data = res?.data;
+      setSheetMeta(data);
+      setSheet(data?.students || []);
+    }).catch(err => {
+      setError(err.message || 'Failed to fetch attendance sheet');
+    }).finally(() => {
+      setLoading(false);
+    });
+  }, [selectedClassId, selectedSectionId, attendanceDate]);
+
+  // Bulk actions
   const markAll = (status) => {
-    setRecords((prev) => prev.map((r) => ({ ...r, status })));
+    setSheet(prev => prev.map(item => ({ ...item, status })));
   };
 
-  // Save to Laravel Backend
+  const updateStudentStatus = (studentId, status) => {
+    setSheet(prev => prev.map(item => item.student_id === studentId ? { ...item, status } : item));
+  };
+
+  const updateRemarks = (studentId, remarks) => {
+    setSheet(prev => prev.map(item => item.student_id === studentId ? { ...item, remarks } : item));
+  };
+
+  // Save Attendance to API
   const handleSaveAttendance = async () => {
-    if (records.length === 0) return;
-
+    if (sheet.length === 0) return;
+    setSaving(true);
+    setError(null);
     try {
-      setSaving(true);
-      setMessage(null);
-
-      await attendanceApi.save({
-        attendance_date: selectedDate,
-        course_id: selectedCourse ? Number(selectedCourse) : null,
-        records: records.map((r) => ({
-          student_id: r.student_id,
-          status: r.status,
-          remarks: r.remarks || null
+      await attendanceApi.bulkSaveStudent({
+        class_id: selectedClassId,
+        section_id: selectedSectionId || null,
+        attendance_date: attendanceDate,
+        records: sheet.map(s => ({
+          student_id: s.student_id,
+          status: s.status,
+          remarks: s.remarks || null
         }))
       });
-
-      setMessage({ type: 'success', text: `Attendance for ${selectedDate} saved successfully!` });
-      fetchAttendanceRegister();
+      setSuccessMsg(`Attendance saved successfully for ${sheet.length} students on ${attendanceDate}!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Failed to save attendance.' });
+      setError(err.message || 'Error saving attendance');
     } finally {
       setSaving(false);
     }
   };
 
-  // Quick summary counts for currently viewed date
-  const presentCount = records.filter((r) => r.status === 'Present').length;
-  const absentCount = records.filter((r) => r.status === 'Absent').length;
-  const lateCount = records.filter((r) => r.status === 'Late').length;
-  const dailyPercentage = records.length > 0 ? Math.round((presentCount / records.length) * 100) : 100;
+  const presentCount = sheet.filter(s => s.status === 'Present').length;
+  const absentCount = sheet.filter(s => s.status === 'Absent').length;
+  const lateCount = sheet.filter(s => s.status === 'Late').length;
+  const totalCount = sheet.length;
+  const attendanceRate = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Header */}
-      <div style={styles.topBar}>
+    <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Title */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-            Student Attendance Management
-          </h2>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '2px 0 0 0' }}>
-            Daily attendance roll call, verification, and percentage analytics
-          </p>
+          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: '0 0 6px 0' }}>Daily Attendance Sheet</h1>
+          <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Mark student attendance class-wise with instant status toggles and audit history.</p>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div style={styles.viewTabs}>
-          <button
-            onClick={() => setActiveView('register')}
-            style={{
-              ...styles.tabBtn,
-              ...(activeView === 'register' ? styles.tabBtnActive : {})
-            }}
-          >
-            Daily Register
-          </button>
-          <button
-            onClick={() => setActiveView('history')}
-            style={{
-              ...styles.tabBtn,
-              ...(activeView === 'history' ? styles.tabBtnActive : {})
-            }}
-          >
-            Attendance Percentage
-          </button>
-        </div>
+        <button
+          onClick={handleSaveAttendance}
+          disabled={saving || sheet.length === 0}
+          style={btnSave}
+        >
+          {saving ? 'Saving...' : '✓ Save Attendance'}
+        </button>
       </div>
 
-      {/* Date & Course Selection Bar */}
-      <div className="card" style={{ padding: '16px 20px' }}>
-        <div style={styles.controlsRow}>
-          {/* Course Selector */}
-          <div style={{ flex: '1', minWidth: '200px' }}>
-            <label style={styles.controlLabel}>Select Course</label>
-            <select
-              value={selectedCourse}
-              onChange={(e) => setSelectedCourse(e.target.value)}
-              className="form-control"
-            >
-              <option value="">All Academic Courses</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.course_name} ({c.course_code})
-                </option>
+      {successMsg && (
+        <div style={{ padding: '12px 16px', backgroundColor: '#ecfdf5', border: '1px solid #10b981', color: '#065f46', borderRadius: '8px', marginBottom: '20px', fontWeight: 600 }}>
+          {successMsg}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ padding: '12px 16px', backgroundColor: '#fef2f2', border: '1px solid #ef4444', color: '#991b1b', borderRadius: '8px', marginBottom: '20px' }}>
+          {error}
+        </div>
+      )}
+
+      {/* Filter / Selector Bar */}
+      <div style={selectorCard}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', flex: 1 }}>
+          <div>
+            <label style={labelStyle}>Select Class</label>
+            <select value={selectedClassId} onChange={handleClassChange} style={selectStyle}>
+              {classes.map(c => (
+                <option key={c.id} value={c.id}>{c.class_name}</option>
               ))}
             </select>
           </div>
 
-          {/* Date Picker (Only relevant for register view) */}
-          {activeView === 'register' && (
-            <div style={{ width: '180px' }}>
-              <label style={styles.controlLabel}>Attendance Date</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="form-control"
-              />
-            </div>
-          )}
+          <div>
+            <label style={labelStyle}>Select Section</label>
+            <select
+              value={selectedSectionId}
+              onChange={e => setSelectedSectionId(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="">All Sections</option>
+              {sections.map(s => (
+                <option key={s.id} value={s.id}>Section {s.section_name}</option>
+              ))}
+            </select>
+          </div>
 
-          {activeView === 'register' && records.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-              <button onClick={() => markAll('Present')} className="btn btn-secondary btn-sm" title="Mark all Present">
-                All Present
-              </button>
-              <button onClick={() => markAll('Absent')} className="btn btn-secondary btn-sm" title="Mark all Absent">
-                All Absent
-              </button>
-            </div>
-          )}
+          <div>
+            <label style={labelStyle}>Attendance Date</label>
+            <input
+              type="date"
+              value={attendanceDate}
+              onChange={e => setAttendanceDate(e.target.value)}
+              style={selectStyle}
+            />
+          </div>
+        </div>
+
+        {/* Quick Bulk Actions */}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => markAll('Present')} style={btnPresentAll}>
+            ✓ All Present
+          </button>
+          <button onClick={() => markAll('Absent')} style={btnAbsentAll}>
+            ✕ All Absent
+          </button>
         </div>
       </div>
 
-      {message && (
-        <div
-          style={{
-            padding: '12px 18px',
-            borderRadius: '8px',
-            fontSize: '13px',
-            fontWeight: '500',
-            backgroundColor: message.type === 'success' ? '#ecfdf5' : '#fef2f2',
-            color: message.type === 'success' ? '#065f46' : '#991b1b',
-            border: `1px solid ${message.type === 'success' ? '#a7f3d0' : '#fee2e2'}`
-          }}
-        >
-          {message.text}
+      {/* Attendance Stats Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
+        <div style={statCard}>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a' }}>{totalCount}</div>
+          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Enrolled in Class</div>
         </div>
-      )}
-
-      {/* Main Content Area */}
-      {activeView === 'register' ? (
-        <>
-          {/* Daily Metric Cards */}
-          <div style={styles.dailyStatsGrid}>
-            <div className="card" style={{ padding: '14px 18px' }}>
-              <span style={styles.statLabel}>Total Enrolled</span>
-              <strong style={{ fontSize: '20px', color: '#0f172a' }}>{records.length}</strong>
-            </div>
-            <div className="card" style={{ padding: '14px 18px' }}>
-              <span style={styles.statLabel}>Present Today</span>
-              <strong style={{ fontSize: '20px', color: '#10b981' }}>{presentCount}</strong>
-            </div>
-            <div className="card" style={{ padding: '14px 18px' }}>
-              <span style={styles.statLabel}>Absent Today</span>
-              <strong style={{ fontSize: '20px', color: '#ef4444' }}>{absentCount}</strong>
-            </div>
-            <div className="card" style={{ padding: '14px 18px' }}>
-              <span style={styles.statLabel}>Late Arrival</span>
-              <strong style={{ fontSize: '20px', color: '#f59e0b' }}>{lateCount}</strong>
-            </div>
-            <div className="card" style={{ padding: '14px 18px' }}>
-              <span style={styles.statLabel}>Session Turnout</span>
-              <strong style={{ fontSize: '20px', color: '#2563eb' }}>{dailyPercentage}%</strong>
-            </div>
-          </div>
-
-          {/* Roll Call Table */}
-          <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-            {loading ? (
-              <div style={{ padding: '48px', textAlign: 'center' }}>
-                <div style={styles.spinner} />
-                <p style={{ color: '#64748b', fontSize: '13px', marginTop: '12px' }}>
-                  Loading enrolled students for attendance...
-                </p>
-              </div>
-            ) : records.length === 0 ? (
-              <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-                <div style={{ fontSize: '40px' }}>📋</div>
-                <h3 style={{ fontSize: '16px', fontWeight: '700', marginTop: '8px' }}>No Active Students Enrolled</h3>
-                <p style={{ color: '#64748b', fontSize: '13px', maxWidth: '420px', margin: '4px auto 0 auto' }}>
-                  No active students found in this course. Register or enroll students to take attendance.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Code</th>
-                        <th>Student Name</th>
-                        <th>Course</th>
-                        <th style={{ textAlign: 'center' }}>Attendance Status</th>
-                        <th>Remarks / Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {records.map((r) => (
-                        <tr key={r.student_id}>
-                          <td>
-                            <span style={styles.codeBadge}>{r.student_code}</span>
-                          </td>
-                          <td style={{ fontWeight: '600', color: '#0f172a' }}>{r.full_name}</td>
-                          <td style={{ color: '#64748b' }}>{r.course_name}</td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div style={styles.radioGroup}>
-                              <label style={{ ...styles.radioLabel, ...(r.status === 'Present' ? styles.radioLabelPresent : {}) }}>
-                                <input
-                                  type="radio"
-                                  name={`status_${r.student_id}`}
-                                  value="Present"
-                                  checked={r.status === 'Present'}
-                                  onChange={() => handleStatusChange(r.student_id, 'Present')}
-                                />
-                                <span>Present</span>
-                              </label>
-
-                              <label style={{ ...styles.radioLabel, ...(r.status === 'Late' ? styles.radioLabelLate : {}) }}>
-                                <input
-                                  type="radio"
-                                  name={`status_${r.student_id}`}
-                                  value="Late"
-                                  checked={r.status === 'Late'}
-                                  onChange={() => handleStatusChange(r.student_id, 'Late')}
-                                />
-                                <span>Late</span>
-                              </label>
-
-                              <label style={{ ...styles.radioLabel, ...(r.status === 'Absent' ? styles.radioLabelAbsent : {}) }}>
-                                <input
-                                  type="radio"
-                                  name={`status_${r.student_id}`}
-                                  value="Absent"
-                                  checked={r.status === 'Absent'}
-                                  onChange={() => handleStatusChange(r.student_id, 'Absent')}
-                                />
-                                <span>Absent</span>
-                              </label>
-                            </div>
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              value={r.remarks}
-                              onChange={(e) => handleRemarksChange(r.student_id, e.target.value)}
-                              placeholder="e.g. Approved medical leave"
-                              className="form-control"
-                              style={{ padding: '6px 10px', fontSize: '13px' }}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Footer Save Action */}
-                <div style={styles.footerSave}>
-                  <div style={{ fontSize: '13px', color: '#64748b' }}>
-                    Changes will be saved to MySQL table <code>attendances</code> for date <strong>{selectedDate}</strong>.
-                  </div>
-                  <button
-                    onClick={handleSaveAttendance}
-                    disabled={saving}
-                    className="btn btn-primary"
-                    style={{ padding: '10px 24px', fontSize: '14px' }}
-                  >
-                    {saving ? 'Recording Attendance...' : 'Save & Submit Attendance'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </>
-      ) : (
-        /* Percentage Analytics View */
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-          {statsLoading ? (
-            <div style={{ padding: '48px', textAlign: 'center' }}>
-              <div style={styles.spinner} />
-              <p style={{ color: '#64748b', fontSize: '13px', marginTop: '12px' }}>
-                Computing attendance percentages...
-              </p>
-            </div>
-          ) : stats.length === 0 ? (
-            <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-              <p style={{ color: '#64748b', fontSize: '14px' }}>No attendance history recorded yet.</p>
-            </div>
-          ) : (
-            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Student Code</th>
-                    <th>Full Name</th>
-                    <th>Total Sessions</th>
-                    <th>Present</th>
-                    <th>Late</th>
-                    <th>Absent</th>
-                    <th>Attendance %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.map((st) => (
-                    <tr key={st.id}>
-                      <td><span style={styles.codeBadge}>{st.student_code}</span></td>
-                      <td style={{ fontWeight: '600' }}>{st.full_name}</td>
-                      <td>{st.total_sessions}</td>
-                      <td style={{ color: '#10b981', fontWeight: '600' }}>{st.present_sessions}</td>
-                      <td style={{ color: '#f59e0b', fontWeight: '600' }}>{st.late_sessions}</td>
-                      <td style={{ color: '#ef4444', fontWeight: '600' }}>{st.absent_sessions}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <strong style={{ color: st.percentage >= 75 ? '#10b981' : '#ef4444' }}>
-                            {st.percentage}%
-                          </strong>
-                          <span className={`badge ${st.percentage >= 75 ? 'badge-active' : 'badge-inactive'}`}>
-                            {st.percentage >= 75 ? 'Satisfactory' : 'Low Attendance'}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div style={statCard}>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#059669' }}>{presentCount}</div>
+          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Present Today</div>
         </div>
-      )}
+        <div style={statCard}>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#dc2626' }}>{absentCount}</div>
+          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Absent Today</div>
+        </div>
+        <div style={statCard}>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#2563eb' }}>{attendanceRate}%</div>
+          <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Attendance Rate</div>
+        </div>
+      </div>
+
+      {/* Attendance Table */}
+      <div style={tableContainer}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#64748b' }}>Loading class roster...</div>
+        ) : sheet.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#64748b' }}>
+            No students found enrolled in this class and section.
+          </div>
+        ) : (
+          <table style={tableStyle}>
+            <thead>
+              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={{ ...thStyle, width: '70px' }}>Roll #</th>
+                <th style={thStyle}>Admission #</th>
+                <th style={thStyle}>Student Name</th>
+                <th style={{ ...thStyle, width: '320px', textAlign: 'center' }}>Attendance Status</th>
+                <th style={thStyle}>Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sheet.map((stu) => (
+                <tr key={stu.student_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ ...tdStyle, fontWeight: 700, color: '#0f172a' }}>
+                    #{stu.roll_no || '-'}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#2563eb', fontWeight: 600 }}>
+                    {stu.admission_no}
+                  </td>
+                  <td style={{ ...tdStyle, fontWeight: 600, color: '#0f172a' }}>
+                    {stu.student_name}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>
+                    <div style={{ display: 'inline-flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => updateStudentStatus(stu.student_id, 'Present')}
+                        style={{
+                          ...pillBtn,
+                          backgroundColor: stu.status === 'Present' ? '#10b981' : '#f1f5f9',
+                          color: stu.status === 'Present' ? '#ffffff' : '#475569',
+                          fontWeight: stu.status === 'Present' ? 700 : 500
+                        }}
+                      >
+                        Present
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateStudentStatus(stu.student_id, 'Absent')}
+                        style={{
+                          ...pillBtn,
+                          backgroundColor: stu.status === 'Absent' ? '#ef4444' : '#f1f5f9',
+                          color: stu.status === 'Absent' ? '#ffffff' : '#475569',
+                          fontWeight: stu.status === 'Absent' ? 700 : 500
+                        }}
+                      >
+                        Absent
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateStudentStatus(stu.student_id, 'Late')}
+                        style={{
+                          ...pillBtn,
+                          backgroundColor: stu.status === 'Late' ? '#f59e0b' : '#f1f5f9',
+                          color: stu.status === 'Late' ? '#ffffff' : '#475569',
+                          fontWeight: stu.status === 'Late' ? 700 : 500
+                        }}
+                      >
+                        Late
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateStudentStatus(stu.student_id, 'Half Day')}
+                        style={{
+                          ...pillBtn,
+                          backgroundColor: stu.status === 'Half Day' ? '#3b82f6' : '#f1f5f9',
+                          color: stu.status === 'Half Day' ? '#ffffff' : '#475569',
+                          fontWeight: stu.status === 'Half Day' ? 700 : 500
+                        }}
+                      >
+                        Half Day
+                      </button>
+                    </div>
+                  </td>
+                  <td style={tdStyle}>
+                    <input
+                      type="text"
+                      placeholder="Optional remarks..."
+                      value={stu.remarks || ''}
+                      onChange={e => updateRemarks(stu.student_id, e.target.value)}
+                      style={tableInput}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
 
-const styles = {
-  topBar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: '12px'
-  },
-  viewTabs: {
-    display: 'flex',
-    backgroundColor: '#e2e8f0',
-    padding: '3px',
-    borderRadius: '8px'
-  },
-  tabBtn: {
-    padding: '8px 16px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: '#64748b',
-    fontSize: '13px',
-    fontWeight: '600',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease'
-  },
-  tabBtnActive: {
-    backgroundColor: '#ffffff',
-    color: '#0f172a',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-  },
-  controlsRow: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: '16px'
-  },
-  controlLabel: {
-    display: 'block',
-    fontSize: '12px',
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: '4px'
-  },
-  dailyStatsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-    gap: '12px'
-  },
-  statLabel: {
-    display: 'block',
-    fontSize: '11px',
-    fontWeight: '600',
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.4px',
-    marginBottom: '2px'
-  },
-  spinner: {
-    width: '32px',
-    height: '32px',
-    border: '3px solid #e2e8f0',
-    borderTopColor: '#2563eb',
-    borderRadius: '50%',
-    margin: '0 auto',
-    animation: 'spin 0.8s linear infinite'
-  },
-  codeBadge: {
-    display: 'inline-block',
-    padding: '3px 8px',
-    backgroundColor: '#eff6ff',
-    color: '#2563eb',
-    borderRadius: '6px',
-    fontWeight: '600',
-    fontSize: '12px'
-  },
-  radioGroup: {
-    display: 'inline-flex',
-    gap: '8px'
-  },
-  radioLabel: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '6px 10px',
-    borderRadius: '6px',
-    border: '1px solid #e2e8f0',
-    fontSize: '12px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    backgroundColor: '#ffffff',
-    transition: 'all 0.15s ease'
-  },
-  radioLabelPresent: {
-    backgroundColor: '#ecfdf5',
-    borderColor: '#a7f3d0',
-    color: '#065f46'
-  },
-  radioLabelLate: {
-    backgroundColor: '#fffbeb',
-    borderColor: '#fde68a',
-    color: '#92400e'
-  },
-  radioLabelAbsent: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-    color: '#991b1b'
-  },
-  footerSave: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '16px 24px',
-    backgroundColor: '#f8fafc',
-    borderTop: '1px solid #e2e8f0',
-    flexWrap: 'wrap',
-    gap: '12px'
-  }
+const selectorCard = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-end',
+  backgroundColor: '#ffffff',
+  padding: '16px 20px',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  marginBottom: '20px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+};
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#475569',
+  marginBottom: '6px'
+};
+
+const selectStyle = {
+  padding: '9px 12px',
+  borderRadius: '8px',
+  border: '1px solid #cbd5e1',
+  fontSize: '13px',
+  color: '#0f172a',
+  backgroundColor: '#ffffff',
+  minWidth: '160px'
+};
+
+const statCard = {
+  backgroundColor: '#ffffff',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  padding: '16px',
+  textAlign: 'center',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+};
+
+const tableContainer = {
+  backgroundColor: '#ffffff',
+  borderRadius: '12px',
+  border: '1px solid #e2e8f0',
+  overflowX: 'auto',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+};
+
+const tableStyle = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  textAlign: 'left',
+  fontSize: '13.5px'
+};
+
+const thStyle = {
+  padding: '14px 18px',
+  fontWeight: 600,
+  color: '#475569',
+  fontSize: '12px',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px'
+};
+
+const tdStyle = {
+  padding: '12px 18px',
+  color: '#334155'
+};
+
+const pillBtn = {
+  padding: '6px 12px',
+  borderRadius: '6px',
+  border: 'none',
+  fontSize: '12px',
+  cursor: 'pointer',
+  transition: 'all 0.15s ease'
+};
+
+const tableInput = {
+  width: '100%',
+  padding: '6px 10px',
+  borderRadius: '6px',
+  border: '1px solid #e2e8f0',
+  fontSize: '12px'
+};
+
+const btnSave = {
+  padding: '10px 20px',
+  backgroundColor: '#059669',
+  color: '#ffffff',
+  border: 'none',
+  borderRadius: '8px',
+  fontSize: '13.5px',
+  fontWeight: 700,
+  cursor: 'pointer',
+  boxShadow: '0 2px 4px rgba(5,150,105,0.2)'
+};
+
+const btnPresentAll = {
+  padding: '8px 12px',
+  backgroundColor: '#ecfdf5',
+  color: '#059669',
+  border: '1px solid #a7f3d0',
+  borderRadius: '6px',
+  fontSize: '12px',
+  fontWeight: 600,
+  cursor: 'pointer'
+};
+
+const btnAbsentAll = {
+  padding: '8px 12px',
+  backgroundColor: '#fef2f2',
+  color: '#dc2626',
+  border: '1px solid #fecaca',
+  borderRadius: '6px',
+  fontSize: '12px',
+  fontWeight: 600,
+  cursor: 'pointer'
 };
