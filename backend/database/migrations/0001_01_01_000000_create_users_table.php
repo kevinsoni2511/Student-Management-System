@@ -13,11 +13,25 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
             $table->string('name');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->enum('role', ['admin'])->default('admin');
+            $table->enum('role', [
+                'super_admin',
+                'admin',
+                'teacher',
+                'accountant',
+                'receptionist',
+                'librarian',
+                'transport_manager',
+                'parent',
+                'student'
+            ])->default('admin');
+            $table->string('phone', 30)->nullable();
+            $table->string('avatar', 255)->nullable();
+            $table->enum('status', ['Active', 'Inactive'])->default('Active');
             $table->rememberToken();
             $table->timestamps();
         });
